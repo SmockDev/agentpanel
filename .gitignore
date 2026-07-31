@@ -6,3 +6,6 @@ node_modules
 # and this repo is what npm sends people to for agentpanel's source.
 scripts
 data
+
+# build artifacts
+*.tgz
