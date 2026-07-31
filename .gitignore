@@ -9,3 +9,6 @@ data
 
 # build artifacts
 *.tgz
+
+# idea research, not part of the product
+research
