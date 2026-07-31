@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AgentPanel: one board for every coding agent</title>
+<meta name="description" content="Run Claude Code, Codex and Gemini on your own machines. Watch and steer every session from your phone.">
+<style>
+  /* ── Dark equipment panel. AgentPanel: one control panel for every coding agent. The page is
+       built like the front of a rack unit sitting in a dim room: anodised
+       panel, silkscreened labels, hairline rules, and indicator lamps doing
+       the only shouting. ────────────── */
+  :root{
+    --panel:#131417;        /* anodised panel */
+    --panel-hi:#1A1C20;     /* raised surface */
+    --panel-lo:#0E0F11;     /* recessed well */
+    --ink:#E7E4DB;          /* silkscreen */
+    --ink-soft:#8B887F;
+    --rule:#26292E;
+    --rule-hard:#383C42;
+    --lamp-run:#F0A030;     /* amber: working */
+    --lamp-wait:#E04B36;    /* red: wants you */
+    --lamp-done:#4FA85F;    /* green: finished */
+    --lamp-off:#3A3E43;
+    --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:"Helvetica Neue",Helvetica,Arial,system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:var(--panel);color:var(--ink);font-family:var(--sans);
+    background-image:repeating-linear-gradient(90deg,rgba(255,255,255,.014) 0 1px,transparent 1px 3px);
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+  .lbl{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft)}
+
+  header{border-bottom:1px solid var(--rule-hard);background:var(--panel-hi)}
+  .bar{display:flex;align-items:center;justify-content:space-between;height:52px}
+  .mark{display:flex;align-items:baseline;gap:10px}
+  .mark b{font-size:15px;letter-spacing:.14em;text-transform:uppercase;font-weight:800}
+  .mark span{font-family:var(--mono);font-size:10px;color:var(--ink-soft);letter-spacing:.1em}
+  .navlinks{display:flex;gap:22px}
+  .navlinks a{font-family:var(--mono);font-size:12px;color:var(--ink);text-decoration:none;border-bottom:1px solid transparent;padding-bottom:2px}
+  .navlinks a:hover,.navlinks a:focus-visible{border-bottom-color:var(--ink)}
+
+  .hero{padding:74px 0 8px}
+  h1{font-size:clamp(38px,7.4vw,80px);line-height:.92;margin:0;font-weight:800;letter-spacing:-.02em;text-transform:uppercase;max-width:13ch}
+  .lede{font-size:17px;line-height:1.55;max-width:54ch;margin:22px 0 0;color:#BFBCB3}
+  .lede b{font-weight:700;color:var(--ink)}
+
+  .actions{display:flex;flex-wrap:wrap;gap:12px;margin:30px 0 0}
+  .cmd{display:flex;align-items:center;gap:12px;border:1px solid var(--rule-hard);background:var(--panel-lo);color:var(--ink);font-family:var(--mono);font-size:13px;padding:13px 16px}
+  .cmd .pmt{color:var(--lamp-run)}
+  .btn2{display:flex;align-items:center;border:1px solid var(--ink);background:var(--ink);color:var(--panel);font-family:var(--mono);font-size:13px;padding:13px 16px;text-decoration:none;font-weight:700}
+  .btn2:hover,.btn2:focus-visible{background:transparent;color:var(--ink)}
+
+  /* SIGNATURE: line status board */
+  .board{margin:52px 0 0;border:1px solid var(--rule-hard);background:var(--panel-lo)}
+  .board-hd{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 14px;border-bottom:1px solid var(--rule-hard);background:var(--panel-hi)}
+  .line{display:grid;grid-template-columns:26px 20px 1fr 92px 78px;align-items:center;gap:14px;padding:13px 14px;border-bottom:1px solid var(--rule)}
+  .line:last-child{border-bottom:0}
+  .line .no{font-family:var(--mono);font-size:11px;color:var(--ink-soft)}
+  .lamp{width:11px;height:11px;border:1px solid rgba(0,0,0,.55);background:var(--lamp-off);display:block}
+  .lamp.run{background:var(--lamp-run)}
+  .lamp.wait{background:var(--lamp-wait);animation:blink 1.15s steps(1,end) infinite}
+  .lamp.done{background:var(--lamp-done)}
+  @keyframes blink{0%,55%{opacity:1}56%,100%{opacity:.2}}
+  .line .task{font-family:var(--mono);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .line .tool,.line .st{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft)}
+  .line .st{text-align:right;color:var(--ink)}
+  .line.is-wait{background:rgba(224,75,54,.09)}
+  .board-ft{padding:10px 14px;border-top:1px solid var(--rule-hard);background:var(--panel-hi);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+
+  .sec{padding:64px 0;border-top:1px solid var(--rule-hard)}
+  .sec-hd{display:flex;align-items:baseline;gap:14px;margin:0 0 26px;flex-wrap:wrap}
+  h2{font-size:26px;margin:0;font-weight:800;letter-spacing:-.01em;text-transform:uppercase}
+
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--rule-hard);background:var(--panel-hi)}
+  .cell{padding:24px;border-right:1px solid var(--rule)}
+  .cell:last-child{border-right:0}
+  .cell h3{margin:12px 0 8px;font-size:15px;font-weight:700}
+  .cell p{margin:0;font-size:14px;line-height:1.6;color:#A9A69E}
+
+  .steps{border:1px solid var(--rule-hard);background:var(--panel-hi)}
+  .step{display:grid;grid-template-columns:56px 1fr;gap:20px;padding:22px 24px;border-bottom:1px solid var(--rule);align-items:start}
+  .step:last-child{border-bottom:0}
+  .step .n{font-family:var(--mono);font-size:26px;font-weight:700;color:var(--rule-hard);line-height:1}
+  .step h3{margin:0 0 6px;font-size:15px;font-weight:700}
+  .step p{margin:0;font-size:14px;line-height:1.6;color:#A9A69E;max-width:62ch}
+  .step code{font-family:var(--mono);font-size:13px;background:var(--panel-lo);border:1px solid var(--rule-hard);padding:1px 6px;color:var(--ink)}
+
+  .jacks{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));border:1px solid var(--rule-hard);background:var(--panel-hi)}
+  .jack{padding:18px;border-right:1px solid var(--rule);border-bottom:1px solid var(--rule);display:flex;align-items:center;gap:11px}
+  .jack .port{width:13px;height:13px;border:2px solid var(--rule-hard);background:var(--panel-lo);flex:none}
+  .jack.on .port{border-color:#6E7178;background:var(--lamp-done)}
+  .jack span{font-family:var(--mono);font-size:12px}
+  .jack em{font-family:var(--mono);font-size:10px;color:var(--ink-soft);font-style:normal;letter-spacing:.08em}
+
+  .tiers{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--rule-hard);background:var(--panel-hi)}
+  .tier{padding:26px 24px;border-right:1px solid var(--rule)}
+  .tier:last-child{border-right:0}
+  .tier.best{background:var(--panel-lo);box-shadow:inset 0 0 0 1px var(--rule-hard)}
+  .price{font-size:36px;font-weight:800;letter-spacing:-.02em;margin:14px 0 2px}
+  .price small{font-size:13px;font-weight:400;color:var(--ink-soft);letter-spacing:0}
+  .tier ul{list-style:none;padding:0;margin:16px 0 0}
+  .tier li{font-size:13.5px;line-height:1.5;padding:7px 0;border-top:1px solid var(--rule);color:#A9A69E}
+  .tier li:first-child{border-top:0}
+
+  /* signup */
+  .signup{display:flex;max-width:480px;margin:20px 0 0;border:1px solid var(--rule-hard)}
+  .signup input{flex:1;min-width:0;border:0;background:var(--panel-lo);padding:14px;font-family:var(--mono);font-size:13px;color:var(--ink)}
+  .signup input::placeholder{color:#5F5D57}
+  .signup input:focus{outline:2px solid var(--lamp-run);outline-offset:-2px}
+  .signup button{border:0;border-left:1px solid var(--rule-hard);background:var(--ink);color:var(--panel);font-family:var(--mono);font-size:13px;padding:14px 18px;cursor:pointer;text-transform:uppercase;letter-spacing:.1em;font-weight:700}
+  .signup button:hover:not(:disabled){background:var(--lamp-run)}
+  .signup button:disabled{opacity:.6;cursor:default}
+  .msg{font-family:var(--mono);font-size:12px;margin:12px 0 0;min-height:1.2em}
+  .msg.ok{color:var(--lamp-done)}
+  .msg.bad{color:var(--lamp-wait)}
+  .note{font-family:var(--mono);font-size:11px;color:var(--ink-soft);margin:12px 0 0;line-height:1.6}
+
+  footer{border-top:1px solid var(--rule-hard);background:var(--panel-hi);padding:26px 0}
+  .foot{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  a:focus-visible,button:focus-visible{outline:2px solid var(--lamp-run);outline-offset:2px}
+
+  @media (max-width:860px){
+    .grid3,.tiers{grid-template-columns:1fr}
+    .cell,.tier{border-right:0;border-bottom:1px solid var(--rule)}
+    .cell:last-child,.tier:last-child{border-bottom:0}
+    .line{grid-template-columns:22px 16px 1fr 70px;gap:10px}
+    .line .tool{display:none}
+    .navlinks{gap:14px}
+  }
+  @media (prefers-reduced-motion:reduce){ .lamp.wait{animation:none} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap bar">
+    <div class="mark"><b>AgentPanel</b><span>v0</span></div>
+    <nav class="navlinks">
+      <a href="#how">How it works</a>
+      <a href="#tools">Tools</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#get">Get notified</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="wrap hero">
+    <h1>One board for every agent</h1>
+    <p class="lede">
+      Your agents run on <b>your</b> machines. Laptop, VPS, the box under your desk,
+      whatever you already pay for. AgentPanel is the board you watch them from:
+      every session, every tool, one screen. Including the one in your pocket.
+    </p>
+
+    <div class="actions">
+      <div class="cmd"><span class="pmt">$</span> npm&nbsp;i&nbsp;-g&nbsp;agentpanel</div>
+      <a class="btn2" href="#get">Get notified at launch</a>
+    </div>
+
+    <div class="board" role="img" aria-label="Line status board showing four agent sessions: two running, one waiting for approval, one finished.">
+      <div class="board-hd">
+        <span class="lbl">Line status</span>
+        <span class="lbl">3 active, 1 needs you</span>
+      </div>
+      <div>
+        <div class="line">
+          <span class="no">01</span><i class="lamp run"></i>
+          <span class="task">refactor billing webhook retries</span>
+          <span class="tool">claude code</span><span class="st">Running</span>
+        </div>
+        <div class="line is-wait">
+          <span class="no">02</span><i class="lamp wait"></i>
+          <span class="task">migrate auth to sessions. approve <b>rm -rf ./tmp</b>?</span>
+          <span class="tool">codex</span><span class="st">Needs you</span>
+        </div>
+        <div class="line">
+          <span class="no">03</span><i class="lamp run"></i>
+          <span class="task">write tests for parser edge cases</span>
+          <span class="tool">gemini</span><span class="st">Running</span>
+        </div>
+        <div class="line">
+          <span class="no">04</span><i class="lamp done"></i>
+          <span class="task">bump deps, fix lockfile drift</span>
+          <span class="tool">claude code</span><span class="st">Done</span>
+        </div>
+      </div>
+      <div class="board-ft">
+        <span class="lbl">mac-studio, hetzner-01, thinkpad</span>
+        <span class="lbl">Shut your laptop. Lines on other boxes keep running.</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="why">
+    <div class="wrap">
+      <div class="sec-hd"><span class="lbl">01 / Problem</span><h2>Terminal tabs don't scale</h2></div>
+      <div class="grid3">
+        <div class="cell">
+          <span class="lbl">Lost work</span>
+          <h3>Agents overwrite each other</h3>
+          <p>Two sessions on one repo, and one quietly undoes the other's changes. You find out at review time, if you find out at all.</p>
+        </div>
+        <div class="cell">
+          <span class="lbl">Dead sessions</span>
+          <h3>Close the lid, lose the run</h3>
+          <p>Local sessions die with your laptop. Anything long running means babysitting an open terminal on a machine that has to stay awake.</p>
+        </div>
+        <div class="cell">
+          <span class="lbl">Blind spots</span>
+          <h3>One tool, one window</h3>
+          <p>Claude in one window, Codex in another, a teammate running something you cannot see at all. Nowhere to look at all of it.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="how">
+    <div class="wrap">
+      <div class="sec-hd"><span class="lbl">02 / Setup</span><h2>Three steps, no migration</h2></div>
+      <div class="steps">
+        <div class="step">
+          <span class="n">1</span>
+          <div>
+            <h3>Install on machines you already use</h3>
+            <p>Run <code>apanel link</code> on your laptop, your VPS, the box under your desk. Each one becomes a board you can patch into. Your code never leaves it.</p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="n">2</span>
+          <div>
+            <h3>Start agents the way you already do</h3>
+            <p>Prefix any agent with <code>apanel run</code>. Claude Code, Codex, Gemini, whatever you switch to next month. Same flags, same behaviour, now with a line on the board.</p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="n">3</span>
+          <div>
+            <h3>Watch from anything with a browser</h3>
+            <p>Open the board on your phone. See what every agent is doing, read the diff, approve the risky command, redirect it, or kill it. Agents keep working with your laptop shut.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="tools">
+    <div class="wrap">
+      <div class="sec-hd"><span class="lbl">03 / Compatibility</span><h2>Every agent, one board</h2></div>
+      <div class="jacks">
+        <div class="jack on"><i class="port"></i><span>Claude Code</span></div>
+        <div class="jack on"><i class="port"></i><span>Codex</span></div>
+        <div class="jack on"><i class="port"></i><span>Gemini CLI</span></div>
+        <div class="jack on"><i class="port"></i><span>Aider</span></div>
+        <div class="jack on"><i class="port"></i><span>opencode</span></div>
+        <div class="jack"><i class="port"></i><span>Cursor CLI</span><em>soon</em></div>
+      </div>
+      <p class="note">If it runs in a terminal, it gets a line. No plugin, no SDK to adopt.</p>
+    </div>
+  </section>
+
+  <section class="sec" id="pricing">
+    <div class="wrap">
+      <div class="sec-hd"><span class="lbl">04 / Pricing</span><h2>You bring the compute</h2></div>
+      <div class="tiers">
+        <div class="tier">
+          <span class="lbl">Solo</span>
+          <div class="price">$0</div>
+          <span class="lbl">forever</span>
+          <ul>
+            <li>One machine, one live line</li>
+            <li>Every supported agent</li>
+            <li>Phone and browser access</li>
+          </ul>
+        </div>
+        <div class="tier best">
+          <span class="lbl">Pro</span>
+          <div class="price">$15<small> /month</small></div>
+          <span class="lbl">running several at once</span>
+          <ul>
+            <li>Unlimited machines and lines</li>
+            <li>Voice notes and screenshots in</li>
+            <li>Push when a line needs you</li>
+            <li>Full session history</li>
+          </ul>
+        </div>
+        <div class="tier">
+          <span class="lbl">Team</span>
+          <div class="price">$12<small> /seat/month</small></div>
+          <span class="lbl">shared board</span>
+          <ul>
+            <li>See every teammate's lines</li>
+            <li>Roles and approval rules</li>
+            <li>Audit log of what ran where</li>
+            <li>SSO on request</li>
+          </ul>
+        </div>
+      </div>
+      <p class="note">Agents run on hardware you already pay for, so there is no metered compute and no per token surcharge.</p>
+    </div>
+  </section>
+
+  <section class="sec" id="get">
+    <div class="wrap">
+      <div class="sec-hd"><span class="lbl">05 / Access</span><h2>Not open yet</h2></div>
+      <p class="lede">AgentPanel is being built in the open. Leave an address and you get one email when you can install it. No account is created now, and there is nothing else to sign up for.</p>
+
+      <form class="signup" id="notify" novalidate>
+        <label for="em" class="lbl" style="position:absolute;left:-9999px">Email address</label>
+        <input id="em" name="email" type="email" required placeholder="you@company.com" autocomplete="email" inputmode="email">
+        <button type="submit" id="go">Notify me</button>
+      </form>
+      <p class="msg" id="msg" role="status" aria-live="polite"></p>
+      <p class="note">Stored only to send the launch email. Unsubscribe in one click, or reply and I will delete it.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <span class="lbl">AgentPanel, a control plane for coding agents</span>
+    <span class="lbl">Built by one person, in public</span>
+  </div>
+</footer>
+
+<script>
+/* ── Signup wiring ───────────────────────────────────────────────────────────
+   No account is created here. This posts an address to a list provider, which
+   owns storage, unsubscribes and deliverability. When the product ships you send
+   one broadcast and people make real accounts then.
+
+   Set ENDPOINT to whichever provider you pick:
+     Buttondown  https://buttondown.email/api/emails/embed-subscribe/<user>
+     Formspree   https://formspree.io/f/<id>
+     Loops       https://app.loops.so/api/newsletter-form/<id>
+   Leave it null to run in demo mode and preview the states.            ────── */
+const ENDPOINT = "https://buttondown.com/api/emails/embed-subscribe/AgentPanel";
+
+const form = document.getElementById('notify');
+const input = document.getElementById('em');
+const btn   = document.getElementById('go');
+const msg   = document.getElementById('msg');
+
+function say(html, kind){ msg.innerHTML = html; msg.className = 'msg' + (kind ? ' ' + kind : ''); }
+
+/* A format check can only prove an address is SHAPED like an address. It cannot
+   tell you gmail.con isn't a real domain, which is exactly the typo that quietly
+   loses signups: the person believes they're on the list and never hears from
+   you. So compare the domain against the handful people actually mistype, and
+   offer the fix instead of silently accepting it. */
+const KNOWN = ['gmail.com','googlemail.com','outlook.com','hotmail.com','live.com',
+  'yahoo.com','icloud.com','me.com','proton.me','protonmail.com','aol.com','msn.com','fastmail.com'];
+
+function distance(a, b){
+  const d = Array.from({length: a.length + 1}, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 0; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++)
+      d[i][j] = Math.min(d[i-1][j] + 1, d[i][j-1] + 1, d[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+
+function suggestFor(email){
+  const domain = email.split('@')[1]?.toLowerCase();
+  if (!domain || KNOWN.includes(domain)) return null;
+  let best = null, bestD = Infinity;
+  for (const k of KNOWN){
+    const dist = distance(domain, k);
+    if (dist < bestD){ bestD = dist; best = k; }
+  }
+  // Only offer a correction when it's clearly a slip, not a different provider.
+  return bestD > 0 && bestD <= 2 ? email.split('@')[0] + '@' + best : null;
+}
+
+let overrode = false;   // set when the user insists their address is right
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = input.value.trim();
+
+  if (!/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(email)) {
+    say('That address is missing something. It should look like you@company.com.', 'bad');
+    input.focus();
+    return;
+  }
+
+  const fix = overrode ? null : suggestFor(email);
+  if (fix) {
+    say('Did you mean <a href="#" id="fix" style="color:var(--lamp-run)">' + fix +
+        '</a>? <a href="#" id="keep" style="color:var(--ink-soft)">No, use what I typed</a>', 'bad');
+    document.getElementById('fix').onclick = (ev) => {
+      ev.preventDefault(); input.value = fix; say(''); form.requestSubmit();
+    };
+    document.getElementById('keep').onclick = (ev) => {
+      ev.preventDefault(); overrode = true; say(''); form.requestSubmit();
+    };
+    return;
+  }
+
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = 'Sending';
+  say('');
+
+  try {
+    if (!ENDPOINT) {                       // demo mode
+      await new Promise(r => setTimeout(r, 600));
+    } else {
+      const body = new FormData();
+      body.append('email', email);
+      const res = await fetch(ENDPOINT, { method: 'POST', body, headers: { Accept: 'application/json' } });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+    }
+    form.hidden = true;
+    // Never let demo mode look like a real signup. That is how you ship a dead
+    // form and only find out when the launch email goes to nobody.
+    say(ENDPOINT
+      ? 'You are on the list. One email when it ships, nothing before that.'
+      : 'Demo mode: nothing was stored. Set ENDPOINT in the script to collect for real.',
+      ENDPOINT ? 'ok' : 'bad');
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = original;
+    say('That did not go through. Try again, or email hey@agentpanel.run.', 'bad');
+  }
+});
+</script>
+
+</body>
+</html>

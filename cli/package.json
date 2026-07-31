@@ -1,0 +1,42 @@
+{
+  "name": "@smockdev/agentpanel",
+  "version": "0.1.0",
+  "description": "See and steer all your coding agents from one place.",
+  "keywords": [
+    "claude-code",
+    "codex",
+    "coding-agent",
+    "agent",
+    "cli",
+    "remote",
+    "terminal",
+    "pty"
+  ],
+  "homepage": "https://agentpanel.run",
+  "bugs": "https://github.com/SmockDev/agentpanel/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SmockDev/agentpanel.git",
+    "directory": "cli"
+  },
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "agentpanel": "bin/agentpanel.js",
+    "apanel": "bin/agentpanel.js"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@lydell/node-pty": "^1.2.0-beta.14"
+  }
+}

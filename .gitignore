@@ -1,0 +1,8 @@
+.env
+node_modules
+.remember
+
+# Market research from the idea hunt that led here. Not part of the product,
+# and this repo is what npm sends people to for agentpanel's source.
+scripts
+data
