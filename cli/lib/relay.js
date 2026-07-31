@@ -13,7 +13,7 @@ import { hostname } from "node:os";
 
 const MAX_QUEUE = 256 * 1024; // bytes held while the socket is still connecting
 
-export function connectRelay({ ws: wsUrl, token, agent, cwd, onInput, onResize, onStatus = () => {} }) {
+export function connectRelay({ ws: wsUrl, token, agent, cwd, onInput, onStatus = () => {} }) {
   let sock = null;
   let open = false;
   let closed = false;
@@ -21,6 +21,9 @@ export function connectRelay({ ws: wsUrl, token, agent, cwd, onInput, onResize, 
   let queued = 0;
   let retry = 0;
   let sessionId = null;
+  // The terminal reports its size the moment it starts, which is normally before
+  // the socket finishes connecting. Hold the latest and send it on open.
+  let dims = null;
 
   const dial = () => {
     if (closed) return;
@@ -36,6 +39,7 @@ export function connectRelay({ ws: wsUrl, token, agent, cwd, onInput, onResize, 
       open = true;
       retry = 0;
       s.send(JSON.stringify({ t: "hello", role: "agent", token, agent, cwd, host: hostname() }));
+      if (dims) s.send(JSON.stringify({ t: "dims", ...dims }));
       for (const chunk of queue) s.send(JSON.stringify({ t: "out", d: chunk }));
       queue = [];
       queued = 0;
@@ -57,8 +61,6 @@ export function connectRelay({ ws: wsUrl, token, agent, cwd, onInput, onResize, 
         try { s.close(); } catch {}
       } else if (m.t === "in" && typeof m.d === "string") {
         onInput?.(m.d);
-      } else if (m.t === "resize") {
-        onResize?.(m.cols, m.rows);
       }
     });
 
@@ -96,6 +98,10 @@ export function connectRelay({ ws: wsUrl, token, agent, cwd, onInput, onResize, 
     },
     idle() {
       if (open) try { sock.send(JSON.stringify({ t: "idle" })); } catch {}
+    },
+    dims(cols, rows) {
+      dims = { cols, rows };
+      if (open) try { sock.send(JSON.stringify({ t: "dims", cols, rows })); } catch {}
     },
     exit(code) {
       if (open) try { sock.send(JSON.stringify({ t: "exit", code })); } catch {}

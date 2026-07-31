@@ -52,7 +52,6 @@ const PUBLIC = join(__dirname, "public");
 const ASSETS = {
   "/app.js": { file: "app.js", type: "text/javascript; charset=utf-8", cache: "no-cache" },
   "/vendor/xterm.js": { file: "vendor/xterm.js", type: "text/javascript; charset=utf-8" },
-  "/vendor/addon-fit.js": { file: "vendor/addon-fit.js", type: "text/javascript; charset=utf-8" },
   "/vendor/xterm.css": { file: "vendor/xterm.css", type: "text/css; charset=utf-8" },
 };
 
@@ -74,6 +73,8 @@ function sessionSummary(s) {
     exitCode: s.exitCode ?? null,
     idle: s.idle,
     bytes: s.totalBytes,
+    cols: s.cols ?? null,
+    rows: s.rows ?? null,
   };
 }
 
@@ -104,6 +105,16 @@ const server = createServer((req, res) => {
       "cache-control": asset.cache || "public,max-age=604800",
     });
     res.end(readFileSync(join(PUBLIC, asset.file)));
+    return;
+  }
+
+  /* Only the root serves the page. A catch-all would answer 200 with HTML for
+   * every wrong path, so a typo in a script src would load the page into a
+   * <script> tag and fail as a confusing syntax error instead of an honest 404.
+   * There is no client-side routing here, so nothing needs the fallback. */
+  const path = req.url.split("?")[0];
+  if (path !== "/" && path !== "/index.html") {
+    res.writeHead(404, { "content-type": "text/plain" }).end("not found");
     return;
   }
 
@@ -185,6 +196,10 @@ wss.on("connection", (ws) => {
           session.buffer = session.buffer.slice(-MAX_SCROLLBACK);
         }
         for (const v of session.viewers) send(v, { t: "out", d: msg.d });
+      } else if (msg.t === "dims") {
+        session.cols = msg.cols;
+        session.rows = msg.rows;
+        for (const v of session.viewers) send(v, { t: "dims", cols: session.cols, rows: session.rows });
       } else if (msg.t === "idle") {
         session.idle = true;
         broadcastSessionList();
@@ -212,9 +227,11 @@ wss.on("connection", (ws) => {
     } else if (msg.t === "in" && typeof msg.d === "string" && session) {
       // This is the "steer" half. Straight through to the agent's stdin.
       send(session.sock, { t: "in", d: msg.d });
-    } else if (msg.t === "resize" && session) {
-      send(session.sock, { t: "resize", cols: msg.cols, rows: msg.rows });
     }
+    /* Note there is deliberately no viewer-driven resize. A PTY has exactly one
+     * size, so honouring it would let a phone reshape the terminal someone is
+     * actually working in. The machine running the agent owns its dimensions;
+     * viewers render to match. */
   });
 
   ws.on("close", () => {

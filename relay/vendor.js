@@ -15,7 +15,6 @@ mkdirSync(out, { recursive: true });
 const files = [
   ["@xterm/xterm/lib/xterm.js", "xterm.js"],
   ["@xterm/xterm/css/xterm.css", "xterm.css"],
-  ["@xterm/addon-fit/lib/addon-fit.js", "addon-fit.js"],
 ];
 
 for (const [from, to] of files) {

@@ -10,7 +10,7 @@ if (location.hash) {
   history.replaceState(null, "", location.pathname);
 }
 
-let ws, term, fit, watching = null, sessions = [];
+let ws, term, watching = null, sessions = [], agentDims = null;
 
 function connect() {
   ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host);
@@ -37,10 +37,12 @@ function handle(m) {
   if (m.t === "sessions") { sessions = m.list; if (!watching) renderList(); return; }
   if (m.t === "snapshot") {
     term.reset();
+    if (m.meta.cols) applyDims(m.meta.cols, m.meta.rows);
     term.write(m.d);
     $("#title").textContent = m.meta.agent;
     return;
   }
+  if (m.t === "dims") { applyDims(m.cols, m.rows); return; }
   if (m.t === "out") { term.write(m.d); return; }
   if (m.t === "exit") { term.write(`\r\n\x1b[2m[exited ${m.code}]\x1b[m\r\n`); return; }
   if (m.t === "closed") { term.write("\r\n\x1b[2m[agent disconnected]\x1b[m\r\n"); return; }
@@ -92,14 +94,35 @@ function watch(id) {
       fontSize: 12, cursorBlink: false, scrollback: 4000,
       theme: { background: "#0A0B0D", foreground: "#E7E4DB" },
     });
-    fit = new FitAddon.FitAddon();
-    term.loadAddon(fit);
+    // No fit addon: fitting means resizing to *this* screen, which is exactly
+    // what we must not do. applyDims sizes the font to the agent instead.
     term.open($("#term"));
     term.onData(sendInput);       // real keyboards still work
-    term.onResize(({ cols, rows }) => sendJSON({ t: "resize", cols, rows }));
   }
-  requestAnimationFrame(() => { fit.fit(); });
   sendJSON({ t: "watch", id });
+}
+
+/* Match the terminal that is actually running the agent, and shrink the font
+ * until those columns fit the phone. The alternative, resizing the agent's PTY
+ * to the phone, reflows the terminal the developer is working in and rewraps
+ * their scrollback. The desktop owns its dimensions; this end adapts. */
+function applyDims(cols, rows) {
+  if (!term || !cols || !rows) return;
+  agentDims = { cols, rows };
+  const box = $("#term");
+  const width = box.clientWidth - 8; // padding
+  const height = box.clientHeight - 8;
+  if (width <= 0 || height <= 0) return;
+
+  // xterm's default monospace glyph is about 0.6em wide and 1.2em tall.
+  const byWidth = width / (cols * 0.6);
+  const byHeight = height / (rows * 1.2);
+  const size = Math.max(4, Math.min(16, Math.floor(Math.min(byWidth, byHeight))));
+
+  term.options.fontSize = size;
+  try {
+    term.resize(cols, rows);
+  } catch {}
 }
 
 function showList() {
@@ -134,7 +157,11 @@ for (const b of document.querySelectorAll("#keys button")) {
   };
 }
 
-addEventListener("resize", () => { if (watching && fit) fit.fit(); });
+// Rotating the phone or opening the keyboard changes how much room we have, so
+// recompute the font. The agent's column count never changes because of this.
+addEventListener("resize", () => {
+  if (watching && agentDims) applyDims(agentDims.cols, agentDims.rows);
+});
 setInterval(() => { if (!watching) renderList(); }, 10_000); // keep the ago() timers honest
 
 if (!token) {

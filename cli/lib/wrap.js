@@ -135,15 +135,21 @@ export function wrap(cmd, args, handlers = {}) {
     stdin.on("data", onStdin);
   }
 
-  // Keep the child's idea of the window in sync, or TUIs wrap at the wrong column.
+  /* Keep the child's idea of the window in sync, or TUIs wrap at the wrong
+   * column. The local terminal is the only thing allowed to set this size: a
+   * viewer on a phone must never reshape the terminal someone is working in. */
   const onResize = () => {
+    const cols = stdout.columns || DEFAULT_COLS;
+    const rows = stdout.rows || DEFAULT_ROWS;
     try {
-      child.resize(stdout.columns || DEFAULT_COLS, stdout.rows || DEFAULT_ROWS);
+      child.resize(cols, rows);
     } catch {
       /* child already gone */
     }
+    handlers.onDims?.(cols, rows);
   };
   stdout.on("resize", onResize);
+  handlers.onDims?.(stdout.columns || DEFAULT_COLS, stdout.rows || DEFAULT_ROWS);
 
   /* Restoring the terminal is not optional. Leaving stdin in raw mode means the
    * user's shell stops echoing what they type, which reads as "this tool broke my

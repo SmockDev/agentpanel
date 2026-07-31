@@ -76,7 +76,6 @@ async function run() {
       cwd: process.cwd(),
       // Remote keystrokes go into the same PTY as local ones.
       onInput: (d) => controls?.write(d),
-      onResize: (cols, rows) => controls?.resize(cols, rows),
       onStatus: ({ state }) => {
         // Only ever warn. Never interrupt the run.
         if (state === "denied") console.error("[agentpanel] relay rejected the token, running local only");
@@ -90,6 +89,9 @@ async function run() {
       onStart: (c) => {
         controls = c;
       },
+      // Tell viewers how big this terminal is so they can render to match,
+      // rather than forcing it to match them.
+      onDims: (cols, rows) => relay?.dims(cols, rows),
       onOutput: (chunk) => {
         bytes += Buffer.byteLength(chunk, "utf8");
         relay?.send(chunk);
