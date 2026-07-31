@@ -138,19 +138,28 @@ async function link() {
     return;
   }
 
-  // Check it actually answers before saving, so a typo surfaces now rather than
-  // silently doing nothing the next time an agent is run.
-  try {
-    const res = await fetch(`${cfg.url}/health`, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`relay returned ${res.status}`);
-  } catch (e) {
-    console.error(`could not reach ${cfg.url}: ${e.message}`);
-    process.exitCode = 1;
-    return;
+  /* Check it answers before saving, so a typo surfaces now rather than silently
+   * doing nothing the next time an agent is run. A first TLS handshake from a
+   * cold start can be slow, so this is generous, and `fetch` hides the real
+   * reason in `cause` where an unwrapped message just says "fetch failed". */
+  if (!argv.includes("--force")) {
+    try {
+      const res = await fetch(`${cfg.url}/health`, { signal: AbortSignal.timeout(20000) });
+      if (!res.ok) throw new Error(`relay returned HTTP ${res.status}`);
+    } catch (e) {
+      const why = e.cause?.code || e.cause?.message || e.message;
+      console.error(`could not reach ${cfg.url}\nreason: ${why}`);
+      console.error(`\nif the relay is fine and this is your network, link anyway:\n  apanel link <url> --force`);
+      process.exitCode = 1;
+      return;
+    }
   }
 
   writeConfig(cfg);
   console.log(`linked to ${cfg.url}`);
+  // Length only. Enough to spot a truncated or empty capture, without printing
+  // the credential itself into a terminal or a screenshot.
+  console.log(`token: ${cfg.token.length} characters`);
   console.log(`saved to ${configPath}\n`);
   showViewerLink(cfg);
   console.log(`\nnow run:\n  apanel run -- claude`);

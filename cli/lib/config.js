@@ -30,8 +30,22 @@ export const configPath = FILE;
 /** Accepts what `apanel link` prints: a URL that may carry `#t=TOKEN`. */
 export function parseLink(input, explicitToken) {
   const u = new URL(input);
-  const token = explicitToken || new URLSearchParams(u.hash.slice(1)).get("t");
-  if (!token) throw new Error("no token found. pass --token, or use the full link with #t=");
+  const raw = explicitToken || new URLSearchParams(u.hash.slice(1)).get("t");
+  if (!raw) throw new Error("no token found. pass --token, or use the full link with #t=");
+
+  /* Shells mangle tokens in ways that are invisible until auth fails later.
+   * PowerShell captures multi-line command output as an array and joins it with
+   * spaces; copy-paste picks up trailing newlines. Catch it here, where the fix
+   * is obvious, rather than at "relay rejected the token" an hour later. */
+  const token = raw.trim();
+  if (!token) throw new Error("token is empty after trimming whitespace");
+  if (/\s/.test(token)) {
+    throw new Error(
+      `token contains whitespace, so it was probably captured wrong.\n` +
+        `got ${token.length} characters. expected one unbroken string.`
+    );
+  }
+
   const ws = (u.protocol === "https:" ? "wss:" : "ws:") + "//" + u.host;
   return { url: u.origin, ws, token };
 }
