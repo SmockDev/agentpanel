@@ -43,7 +43,14 @@ function validToken(given) {
 const MAX_SCROLLBACK = 256 * 1024;
 const PUBLIC = join(__dirname, "public");
 
+/* The viewer's own script is a separate file rather than an inline <script>
+ * because the CSP below sets script-src 'self', which blocks inline scripts. An
+ * inline block would have meant either no JavaScript at all or relaxing the
+ * policy to 'unsafe-inline', and this page holds a token. Vendored libraries are
+ * immutable so they cache for a week; app.js revalidates so a fix is never one
+ * stale cache away from not reaching anyone. */
 const ASSETS = {
+  "/app.js": { file: "app.js", type: "text/javascript; charset=utf-8", cache: "no-cache" },
   "/vendor/xterm.js": { file: "vendor/xterm.js", type: "text/javascript; charset=utf-8" },
   "/vendor/addon-fit.js": { file: "vendor/addon-fit.js", type: "text/javascript; charset=utf-8" },
   "/vendor/xterm.css": { file: "vendor/xterm.css", type: "text/css; charset=utf-8" },
@@ -92,7 +99,10 @@ const server = createServer((req, res) => {
    * out /etc/passwd to anyone who types ../, and this box holds an SSH key. */
   const asset = ASSETS[req.url];
   if (asset) {
-    res.writeHead(200, { "content-type": asset.type, "cache-control": "public,max-age=604800" });
+    res.writeHead(200, {
+      "content-type": asset.type,
+      "cache-control": asset.cache || "public,max-age=604800",
+    });
     res.end(readFileSync(join(PUBLIC, asset.file)));
     return;
   }
