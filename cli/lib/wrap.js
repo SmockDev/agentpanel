@@ -81,6 +81,19 @@ export function wrap(cmd, args, handlers = {}) {
     env: process.env,
   });
 
+  /* Hand out a writer so something other than the local keyboard can drive the
+   * agent. This is what makes the product "steer" rather than just "watch": a
+   * keystroke arriving from a phone goes down the same pipe as one typed here,
+   * and the agent cannot tell the difference. */
+  handlers.onStart?.({
+    write: (data) => {
+      try { child.write(data); } catch {}
+    },
+    resize: (cols, rows) => {
+      try { child.resize(cols, rows); } catch {}
+    },
+  });
+
   /* Idle detection is the seed of the feature that makes this a product rather
    * than a remote terminal: knowing which of your sessions is sitting there
    * waiting for a human. A silence timer is a crude first approximation. It will

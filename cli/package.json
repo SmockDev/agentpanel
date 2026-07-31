@@ -1,7 +1,7 @@
 {
   "name": "@smockdev/agentpanel",
-  "version": "0.1.0",
-  "description": "See and steer all your coding agents from one place.",
+  "version": "0.2.0",
+  "description": "See and steer all your coding agents from one place. Wraps any agent in a real terminal and streams it to your phone.",
   "keywords": [
     "claude-code",
     "codex",
@@ -37,6 +37,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@lydell/node-pty": "^1.2.0-beta.14"
+    "@lydell/node-pty": "^1.2.0-beta.14",
+    "ws": "^8.21.1"
   }
 }

@@ -1,21 +1,25 @@
 #!/usr/bin/env node
 // agentpanel
 //
-// Today `run` wraps an agent in a PTY and mirrors it transparently while keeping
-// a copy of the output. The relay and the phone UI plug into that copy next.
+// `run` wraps an agent in a PTY, mirrors it to the local terminal, and (if this
+// machine is linked) streams it to a relay so you can watch and steer from a
+// phone. The relay is always optional: if it is unreachable the agent still runs
+// exactly as it would without this tool.
 
 import { wrap } from "../lib/wrap.js";
+import { connectRelay } from "../lib/relay.js";
+import { readConfig, writeConfig, parseLink, configPath } from "../lib/config.js";
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 const SITE = "https://agentpanel.run";
 
 const HELP = `
 agentpanel ${VERSION}
 See and steer all your coding agents from one place.
 
-  apanel run -- <agent> [args]   wrap an agent and capture its session
-  apanel link                    register this machine                (not built)
-  apanel status                  list lines on this machine           (not built)
+  apanel run -- <agent> [args]   wrap an agent, stream it if linked
+  apanel link <url>              link this machine to a relay
+  apanel status                  show what this machine is linked to
   apanel --version               print version
 
 Works by wrapping a terminal, so any agent counts: Claude Code, Codex,
@@ -23,6 +27,7 @@ Gemini CLI, whatever you switch to next.
 
   apanel run -- claude
   apanel run -- codex --model gpt-5.6
+  apanel link https://agentpanel.run/#t=YOUR_TOKEN
 
 ${SITE}
 `;
@@ -36,6 +41,10 @@ function fmtBytes(n) {
 function fmtDuration(ms) {
   const s = Math.round(ms / 1000);
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+function flag(name) {
+  const i = argv.indexOf(name);
+  return i === -1 ? null : argv[i + 1];
 }
 
 async function run() {
@@ -51,28 +60,57 @@ async function run() {
   }
 
   const [agent, ...agentArgs] = rest;
+  const cfg = readConfig();
   const startedAt = Date.now();
   let bytes = 0;
   let idleReports = 0;
+  let relay = null;
+  let controls = null;
+
+  if (cfg?.ws && cfg?.token) {
+    relay = connectRelay({
+      ws: cfg.ws,
+      token: cfg.token,
+      agent,
+      cwd: process.cwd(),
+      // Remote keystrokes go into the same PTY as local ones.
+      onInput: (d) => controls?.write(d),
+      onResize: (cols, rows) => controls?.resize(cols, rows),
+      onStatus: ({ state }) => {
+        // Only ever warn. Never interrupt the run.
+        if (state === "denied") console.error("[agentpanel] relay rejected the token, running local only");
+      },
+    });
+  }
 
   let code;
   try {
     code = await wrap(agent, agentArgs, {
+      onStart: (c) => {
+        controls = c;
+      },
       onOutput: (chunk) => {
         bytes += Buffer.byteLength(chunk, "utf8");
+        relay?.send(chunk);
       },
       onIdle: () => {
         idleReports++;
+        relay?.idle();
       },
     });
   } catch (err) {
     if (err.code === "ENOENT_AGENT") {
       console.error(`${err.message}. Is it installed and on your PATH?`);
+      relay?.close();
       process.exitCode = 127; // conventional "command not found"
       return;
     }
+    relay?.close();
     throw err;
   }
+
+  relay?.exit(code);
+  relay?.close();
 
   // Written to stderr so it never pollutes piped stdout from the agent.
   console.error(
@@ -80,6 +118,55 @@ async function run() {
       `${fmtBytes(bytes)} captured${idleReports ? `, went quiet ${idleReports}x` : ""}`
   );
   process.exitCode = code;
+}
+
+async function link() {
+  const url = argv.find((a, i) => i > 0 && !a.startsWith("-") && argv[i - 1] !== "--token");
+  if (!url) {
+    console.error("usage: apanel link https://your-relay/#t=TOKEN [--token TOKEN]");
+    process.exitCode = 1;
+    return;
+  }
+
+  let cfg;
+  try {
+    cfg = parseLink(url, flag("--token"));
+  } catch (e) {
+    console.error(e.message);
+    process.exitCode = 1;
+    return;
+  }
+
+  // Check it actually answers before saving, so a typo surfaces now rather than
+  // silently doing nothing the next time an agent is run.
+  try {
+    const res = await fetch(`${cfg.url}/health`, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error(`relay returned ${res.status}`);
+  } catch (e) {
+    console.error(`could not reach ${cfg.url}: ${e.message}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  writeConfig(cfg);
+  console.log(`linked to ${cfg.url}\nsaved to ${configPath}\n\nnow run:\n  apanel run -- claude`);
+}
+
+async function status() {
+  const cfg = readConfig();
+  if (!cfg) {
+    console.log(`not linked.\n\n  apanel link ${SITE}/#t=YOUR_TOKEN`);
+    return;
+  }
+  process.stdout.write(`linked to ${cfg.url} ... `);
+  try {
+    const res = await fetch(`${cfg.url}/health`, { signal: AbortSignal.timeout(8000) });
+    const body = await res.json();
+    console.log(`up, ${body.sessions} session${body.sessions === 1 ? "" : "s"} running`);
+  } catch (e) {
+    console.log(`unreachable (${e.message})`);
+    process.exitCode = 1;
+  }
 }
 
 switch (cmd) {
@@ -93,9 +180,11 @@ switch (cmd) {
     break;
 
   case "link":
+    await link();
+    break;
+
   case "status":
-    console.log(`agentpanel ${VERSION}: \`${cmd}\` is not built yet.\n${SITE}`);
-    process.exitCode = 1;
+    await status();
     break;
 
   case undefined:

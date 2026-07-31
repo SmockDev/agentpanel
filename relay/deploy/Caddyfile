@@ -1,0 +1,22 @@
+# Caddy terminates TLS and proxies to the relay on loopback. Certificates are
+# provisioned automatically once the DNS record points here.
+panel.agentpanel.run {
+	encode zstd gzip
+
+	# WebSocket upgrades are handled by reverse_proxy without extra config.
+	reverse_proxy 127.0.0.1:8787
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	log {
+		output file /var/log/caddy/agentpanel.log
+		# The viewer keeps its token in the URL fragment, which browsers never
+		# send, so it stays out of these logs. Keep it that way.
+	}
+}

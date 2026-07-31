@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0E0F12">
+<title>agentpanel</title>
+<link rel="stylesheet" href="/vendor/xterm.css">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0E0F12; --panel:#131417; --line:#26282E; --ink:#E7E4DB; --dim:#8A8D96;
+    --run:#F0A030; --wait:#E04B36; --done:#4FA85F;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  html,body{height:100%}
+  body{
+    background:var(--bg);color:var(--ink);font-family:var(--mono);
+    font-size:14px;line-height:1.4;overscroll-behavior:none;
+    padding-top:env(safe-area-inset-top);
+  }
+  #app{display:flex;flex-direction:column;height:100dvh}
+
+  header{
+    display:flex;align-items:center;gap:10px;
+    padding:12px 14px;border-bottom:1px solid var(--line);
+    background:var(--panel);flex:0 0 auto;
+  }
+  header b{font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:12px}
+  .spacer{flex:1}
+  .conn{font-size:11px;color:var(--dim);letter-spacing:.06em}
+  .conn.on{color:var(--done)}
+  .conn.off{color:var(--wait)}
+
+  button{
+    font-family:var(--mono);font-size:13px;color:var(--ink);
+    background:#1B1D22;border:1px solid var(--line);border-radius:0;
+    padding:9px 12px;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  }
+  button:active{background:#24272E}
+  button:focus-visible{outline:2px solid var(--run);outline-offset:1px}
+
+  /* Session list, styled as a line status board: the point is to see at a glance
+     which agent needs a human, so the lamp does the talking. */
+  #list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .row{
+    display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+    padding:16px 14px;border:0;border-bottom:1px solid var(--line);
+    background:transparent;
+  }
+  .lamp{width:9px;height:9px;flex:0 0 auto;background:var(--dim)}
+  .lamp.run{background:var(--run)}
+  .lamp.wait{background:var(--wait);animation:blink 1.1s steps(1,end) infinite}
+  .lamp.done{background:var(--done)}
+  @keyframes blink{50%{opacity:.15}}
+  @media (prefers-reduced-motion:reduce){.lamp.wait{animation:none}}
+  .meta{min-width:0;flex:1}
+  .meta .name{font-weight:600}
+  .meta .sub{font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .state{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+  .state.wait{color:var(--wait)}
+  .empty{padding:48px 20px;text-align:center;color:var(--dim);font-size:13px}
+  .empty code{color:var(--ink);display:block;margin-top:12px;font-size:12px}
+
+  /* Terminal view */
+  #term{flex:1;min-height:0;background:#0A0B0D;padding:6px 4px}
+  #term .xterm{height:100%}
+  #bar{
+    flex:0 0 auto;border-top:1px solid var(--line);background:var(--panel);
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  #keys{display:flex;gap:6px;padding:8px 8px 0;overflow-x:auto}
+  #keys button{flex:0 0 auto;font-size:12px;padding:7px 11px;color:var(--dim)}
+  #send{display:flex;gap:6px;padding:8px}
+  #send input{
+    flex:1;min-width:0;font-family:var(--mono);font-size:16px; /* 16px stops iOS zooming on focus */
+    background:#0A0B0D;border:1px solid var(--line);border-radius:0;
+    color:var(--ink);padding:10px;
+  }
+  #send input:focus{outline:none;border-color:var(--run)}
+  .hidden{display:none!important}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <b id="title">agentpanel</b>
+    <span class="spacer"></span>
+    <span class="conn" id="conn">connecting</span>
+    <button id="back" class="hidden">back</button>
+  </header>
+
+  <div id="list"><div class="empty">waiting for the relay</div></div>
+
+  <div id="term" class="hidden"></div>
+  <div id="bar" class="hidden">
+    <div id="keys">
+      <button data-k="\r">enter</button>
+      <button data-k="\x1b">esc</button>
+      <button data-k="\x03">ctrl-c</button>
+      <button data-k="\x1b[A">up</button>
+      <button data-k="\x1b[B">down</button>
+      <button data-k="y\r">yes</button>
+      <button data-k="n\r">no</button>
+      <button data-k="\t">tab</button>
+    </div>
+    <div id="send">
+      <input id="msg" placeholder="type, then send" autocomplete="off"
+             autocapitalize="off" autocorrect="off" spellcheck="false">
+      <button id="go">send</button>
+    </div>
+  </div>
+</div>
+
+<script src="/vendor/xterm.js"></script>
+<script src="/vendor/addon-fit.js"></script>
+<script>
+const $ = (s) => document.querySelector(s);
+
+/* The token lives in the URL fragment, never the query string, so it is not sent
+   to the server in the request line and does not end up in access logs. Stash it
+   and strip it from the address bar so a screenshot of the page does not leak
+   the credential. */
+let token = new URLSearchParams(location.hash.slice(1)).get("t") || localStorage.getItem("ap_token") || "";
+if (location.hash) {
+  localStorage.setItem("ap_token", token);
+  history.replaceState(null, "", location.pathname);
+}
+
+let ws, term, fit, watching = null, sessions = [];
+
+function connect() {
+  ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host);
+  ws.onopen = () => {
+    setConn("live", "on");
+    ws.send(JSON.stringify({ t: "hello", role: "viewer", token }));
+    if (watching) ws.send(JSON.stringify({ t: "watch", id: watching }));
+  };
+  ws.onclose = () => {
+    setConn("reconnecting", "off");
+    setTimeout(connect, 1500); // phones drop sockets constantly, just come back
+  };
+  ws.onmessage = (e) => handle(JSON.parse(e.data));
+}
+
+function setConn(text, cls) {
+  const el = $("#conn");
+  el.textContent = text;
+  el.className = "conn " + (cls || "");
+}
+
+function handle(m) {
+  if (m.t === "denied") { setConn("bad token", "off"); ws.close(); return; }
+  if (m.t === "sessions") { sessions = m.list; if (!watching) renderList(); return; }
+  if (m.t === "snapshot") {
+    term.reset();
+    term.write(m.d);
+    $("#title").textContent = m.meta.agent;
+    return;
+  }
+  if (m.t === "out") { term.write(m.d); return; }
+  if (m.t === "exit") { term.write(`\r\n\x1b[2m[exited ${m.code}]\x1b[m\r\n`); return; }
+  if (m.t === "closed") { term.write("\r\n\x1b[2m[agent disconnected]\x1b[m\r\n"); return; }
+  if (m.t === "gone") { showList(); }
+}
+
+function ago(ts) {
+  const s = Math.round((Date.now() - ts) / 1000);
+  if (s < 60) return s + "s";
+  if (s < 3600) return Math.floor(s / 60) + "m";
+  return Math.floor(s / 3600) + "h";
+}
+
+function renderList() {
+  const list = $("#list");
+  if (!sessions.length) {
+    list.innerHTML = '<div class="empty">no agents running<code>apanel run -- claude</code></div>';
+    return;
+  }
+  list.innerHTML = "";
+  for (const s of sessions) {
+    const done = s.endedAt != null;
+    const cls = done ? "done" : s.idle ? "wait" : "run";
+    const state = done ? `exit ${s.exitCode}` : s.idle ? "needs you" : "running";
+    const b = document.createElement("button");
+    b.className = "row";
+    b.innerHTML =
+      `<span class="lamp ${cls}"></span>` +
+      `<span class="meta"><span class="name">${esc(s.agent)}</span>` +
+      `<span class="sub">${esc(s.host)} ${esc(s.cwd)}</span></span>` +
+      `<span class="state ${s.idle && !done ? "wait" : ""}">${state} ${ago(s.startedAt)}</span>`;
+    b.onclick = () => watch(s.id);
+    list.appendChild(b);
+  }
+}
+
+const esc = (s) => String(s ?? "").replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
+
+function watch(id) {
+  watching = id;
+  $("#list").classList.add("hidden");
+  $("#term").classList.remove("hidden");
+  $("#bar").classList.remove("hidden");
+  $("#back").classList.remove("hidden");
+
+  if (!term) {
+    term = new Terminal({
+      fontFamily: "ui-monospace, Menlo, Consolas, monospace",
+      fontSize: 12, cursorBlink: false, scrollback: 4000,
+      theme: { background: "#0A0B0D", foreground: "#E7E4DB" },
+    });
+    fit = new FitAddon.FitAddon();
+    term.loadAddon(fit);
+    term.open($("#term"));
+    term.onData(sendInput);       // real keyboards still work
+    term.onResize(({ cols, rows }) => sendJSON({ t: "resize", cols, rows }));
+  }
+  requestAnimationFrame(() => { fit.fit(); });
+  sendJSON({ t: "watch", id });
+}
+
+function showList() {
+  watching = null;
+  $("#title").textContent = "agentpanel";
+  $("#list").classList.remove("hidden");
+  $("#term").classList.add("hidden");
+  $("#bar").classList.add("hidden");
+  $("#back").classList.add("hidden");
+  renderList();
+}
+
+const sendJSON = (o) => ws?.readyState === 1 && ws.send(JSON.stringify(o));
+const sendInput = (d) => sendJSON({ t: "in", d });
+
+$("#back").onclick = showList;
+$("#go").onclick = submit;
+$("#msg").addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+
+function submit() {
+  const el = $("#msg");
+  if (!el.value) return;
+  sendInput(el.value + "\r");
+  el.value = "";
+}
+
+for (const b of document.querySelectorAll("#keys button")) {
+  b.onclick = () => {
+    // data-k carries escapes as literal text, so unescape them here
+    sendInput(b.dataset.k.replace(/\\r/g, "\r").replace(/\\t/g, "\t").replace(/\\x1b/g, "\x1b").replace(/\\x03/g, "\x03"));
+    $("#msg").focus();
+  };
+}
+
+addEventListener("resize", () => { if (watching && fit) fit.fit(); });
+setInterval(() => { if (!watching) renderList(); }, 10_000); // keep the ago() timers honest
+
+if (!token) {
+  $("#list").innerHTML = '<div class="empty">no token<code>open the link from `apanel link`</code></div>';
+  setConn("no token", "off");
+} else {
+  connect();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+[Unit]
+Description=agentpanel relay
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/agentpanel
+EnvironmentFile=/etc/agentpanel.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=2
+
+# The relay handles live terminal streams from other people's machines. Give it
+# as little of this box as it can run with, so a bug in it is not a bug in the
+# box: no new privileges, a private /tmp, and no write access to anything.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target
