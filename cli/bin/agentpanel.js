@@ -6,6 +6,7 @@
 // phone. The relay is always optional: if it is unreachable the agent still runs
 // exactly as it would without this tool.
 
+import qrcode from "qrcode-terminal";
 import { wrap } from "../lib/wrap.js";
 import { connectRelay } from "../lib/relay.js";
 import { readConfig, writeConfig, parseLink, configPath } from "../lib/config.js";
@@ -19,7 +20,7 @@ See and steer all your coding agents from one place.
 
   apanel run -- <agent> [args]   wrap an agent, stream it if linked
   apanel link <url>              link this machine to a relay
-  apanel status                  show what this machine is linked to
+  apanel status [--qr]           show link status, --qr for the phone link
   apanel --version               print version
 
 Works by wrapping a terminal, so any agent counts: Claude Code, Codex,
@@ -149,7 +150,20 @@ async function link() {
   }
 
   writeConfig(cfg);
-  console.log(`linked to ${cfg.url}\nsaved to ${configPath}\n\nnow run:\n  apanel run -- claude`);
+  console.log(`linked to ${cfg.url}`);
+  console.log(`saved to ${configPath}\n`);
+  showViewerLink(cfg);
+  console.log(`\nnow run:\n  apanel run -- claude`);
+}
+
+/* Getting the viewer open on a phone is the one step that has to happen on a
+ * different device, and the token is far too long to retype. A QR code turns
+ * that into pointing a camera at the terminal. */
+function showViewerLink(cfg) {
+  const link = `${cfg.url}/#t=${cfg.token}`;
+  console.log("open on your phone:");
+  qrcode.generate(link, { small: true });
+  console.log(link);
 }
 
 async function status() {
@@ -166,6 +180,13 @@ async function status() {
   } catch (e) {
     console.log(`unreachable (${e.message})`);
     process.exitCode = 1;
+    return;
+  }
+  if (argv.includes("--qr")) {
+    console.log();
+    showViewerLink(cfg);
+  } else {
+    console.log(`\nrun \`apanel status --qr\` for the phone link`);
   }
 }
 
